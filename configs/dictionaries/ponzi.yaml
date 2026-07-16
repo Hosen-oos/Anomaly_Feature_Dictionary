@@ -1,0 +1,13 @@
+type: ponzi
+name_zh: 庞氏骗局
+weights:
+  - [0.10, 0.25, 0.00]   # L1 扇入聚集资金流主导
+  - [0.15, 0.10, 0.05]   # L2 语义（固定分红动作模式）
+  - [0.10, 0.00, 0.10]   # L3 轨迹（状态写入模式）
+  - [0.00, 0.00, 0.15]   # L4 链下
+layer_requirements: [0.4, 0.3, 0.2, 0.1]
+match_threshold: 0.55
+coverage_threshold: 0.6
+hard_evidence:
+  - "多来源资金扇入单一合约并按固定规则回流（L1 fan_in + L2 动作周期性）"
+references: [PonziGuard]

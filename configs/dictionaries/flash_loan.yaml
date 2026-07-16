@@ -1,0 +1,14 @@
+type: flash_loan
+name_zh: 闪电贷攻击
+# 权重矩阵 W_k[l][j]，行=层(L1..L4)，列=角度(j1分布/j2经济/j3信息)，无效位置为 0
+weights:
+  - [0.10, 0.15, 0.00]   # L1 图拓扑
+  - [0.20, 0.25, 0.05]   # L2 语义（经济异常最重：借入-操作-归还闭环）
+  - [0.10, 0.00, 0.15]   # L3 轨迹
+  - [0.00, 0.00, 0.00]   # L4 链下
+layer_requirements: [0.2, 0.4, 0.4, 0.0]
+match_threshold: 0.55
+coverage_threshold: 0.7
+hard_evidence:
+  - "同一交易内出现 借入→操作→归还 闭环（L2 动作序列含 flashloan 或 borrow+repay）"
+references: [FlashSyn, FORAY, DeFort]

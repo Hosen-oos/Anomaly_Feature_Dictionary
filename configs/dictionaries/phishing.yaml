@@ -1,0 +1,13 @@
+type: phishing
+name_zh: 钓鱼攻击
+weights:
+  - [0.15, 0.20, 0.00]   # L1 图拓扑（受害资金归集）
+  - [0.05, 0.05, 0.25]   # L2 信息差异主导（授权-转账不一致，ice phishing）
+  - [0.05, 0.00, 0.05]   # L3
+  - [0.00, 0.00, 0.20]   # L4 链下标签
+layer_requirements: [0.3, 0.4, 0.1, 0.2]
+match_threshold: 0.55
+coverage_threshold: 0.6
+hard_evidence:
+  - "无限额度 approve 后资金即被 spender 转走（L2 approval_mismatch）"
+references: ["Dissecting Payload-based Transaction Phishing (NDSS 2025)", TokenScout]

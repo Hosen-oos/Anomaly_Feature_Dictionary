@@ -1,0 +1,76 @@
+"""格内参数池 + 非稀释聚合（方案定稿 §2.1）。
+
+一个信号格 (l,j) 内部是多个参数（来自多篇论文/多条规则）。每个参数先各自对正常集
+做全局 ECDF 得到分位数，再取 **max 分位数**作为格值（"任一参数极端即格异常"，
+避免加权平均把强信号稀释——实验四已证明均值稀释之害）。该格值随后由 M3 做组内二次
+ECDF 校准恢复共形有效性（max 分位数有上偏，组内再校准修正）。
+
+三层递归母题：格内(多参数→max→组内校准) 与 M5(多格→Fisher→组内校准) 同构。
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+from typing import Optional, Protocol
+
+import numpy as np
+
+from mlusd.signals.base import SignalExtractor
+from mlusd.types import TxContext
+
+
+class ParamProvider(Protocol):
+    """被 DictSignal 包裹的内层：给出该格的多参数原始值（越大越异常）。"""
+    layer: int
+    angle: int
+    name: str
+    def params(self, ctx: TxContext) -> dict[str, float]: ...
+    def evidence(self, ctx: TxContext) -> str: ...
+    def fit(self, normal_contexts: list[TxContext]) -> None: ...
+
+
+class DictSignal(SignalExtractor):
+    """把多参数内层聚合成单个格值（max 分位数），对外仍是标准 SignalExtractor。"""
+
+    def __init__(self, inner: ParamProvider):
+        self.inner = inner
+        self.layer = inner.layer
+        self.angle = inner.angle
+        self.name = inner.name
+        self._ecdf: dict[str, np.ndarray] = {}
+
+    def fit(self, normal_contexts: list[TxContext]) -> None:
+        # 内层可能有自身状态需拟合（如 SSTORE 分位阈值）
+        self.inner.fit(normal_contexts)
+        buckets: dict[str, list[float]] = defaultdict(list)
+        for c in normal_contexts:
+            for k, v in (self.inner.params(c) or {}).items():
+                if v is not None and np.isfinite(v):
+                    buckets[k].append(float(v))
+        self._ecdf = {k: np.sort(np.asarray(vs, dtype=float))
+                      for k, vs in buckets.items()}
+
+    def _param_quantiles(self, ctx: TxContext) -> list[tuple[str, float]]:
+        d = self.inner.params(ctx)
+        if not d:
+            return []
+        out = []
+        for k, v in d.items():
+            ref = self._ecdf.get(k)
+            if ref is None or len(ref) == 0 or v is None or not np.isfinite(v):
+                continue
+            q = float(np.searchsorted(ref, v, side="left") / (len(ref) + 1))
+            out.append((k, q))
+        return out
+
+    def score(self, ctx: TxContext) -> Optional[float]:
+        qs = self._param_quantiles(ctx)
+        if not qs:
+            return None
+        return max(q for _, q in qs)     # 非稀释：任一参数极端即格异常
+
+    def top_param(self, ctx: TxContext) -> Optional[str]:
+        qs = self._param_quantiles(ctx)
+        return max(qs, key=lambda x: x[1])[0] if qs else None
+
+    def evidence(self, ctx: TxContext) -> str:
+        return self.inner.evidence(ctx)

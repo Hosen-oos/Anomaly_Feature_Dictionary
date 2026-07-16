@@ -1,0 +1,13 @@
+type: rug_pull
+name_zh: Rug Pull（卷款跑路）
+weights:
+  - [0.05, 0.15, 0.00]   # L1
+  - [0.10, 0.30, 0.05]   # L2 经济异常主导（项目方一次性撤出全部流动性）
+  - [0.05, 0.00, 0.10]   # L3
+  - [0.00, 0.00, 0.20]   # L4 链下（未验证合约/无审计）
+layer_requirements: [0.2, 0.4, 0.1, 0.3]
+match_threshold: 0.55
+coverage_threshold: 0.6
+hard_evidence:
+  - "特权地址一次性 removeLiquidity 撤出大部分储备（L2 liquidity_exit）"
+references: [TokenScout, RPHunter]

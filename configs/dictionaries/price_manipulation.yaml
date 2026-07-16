@@ -1,0 +1,13 @@
+type: price_manipulation
+name_zh: 价格操控攻击
+weights:
+  - [0.05, 0.10, 0.00]   # L1
+  - [0.15, 0.30, 0.05]   # L2 经济异常主导（连环 swap 拉动价格）
+  - [0.15, 0.00, 0.15]   # L3 轨迹（异常路径/状态写入）
+  - [0.00, 0.00, 0.05]   # L4
+layer_requirements: [0.1, 0.45, 0.4, 0.05]
+match_threshold: 0.55
+coverage_threshold: 0.7
+hard_evidence:
+  - "单交易内连环 swap 使某池储备大幅偏移后反向获利（L2 swap_chain + 净获利）"
+references: [DeFiRanger, SMARTCAT, DeFiScope, DeFort]

@@ -1,0 +1,3 @@
+tx_hash,attack_type,event_name,block_number,notes
+0x0000000000000000000000000000000000000000000000000000000000000000,flash_loan,示例-请替换,0,从 DeFiHackLabs / 慢雾事件库逐笔核对后填入
+0x0000000000000000000000000000000000000000000000000000000000000001,price_manipulation,示例-请替换,0,attack_type 取值: flash_loan/price_manipulation/sandwich/phishing/ponzi/rug_pull

@@ -1,0 +1,21 @@
+# 凭据（绝不入库）
+*.json.key
+*-credentials.json
+service-account*.json
+.env
+
+# 数据与缓存
+data/cache/
+data/splits/
+data/labels/*.csv
+!data/labels/*.template.csv
+
+# 校准产物
+data/calibration/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/

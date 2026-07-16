@@ -1,0 +1,13 @@
+type: sandwich
+name_zh: 三明治攻击
+weights:
+  - [0.15, 0.20, 0.00]   # L1 图拓扑（前后夹击结构，用 tx_index 近似）
+  - [0.15, 0.25, 0.05]   # L2 经济异常（夹击 swap）
+  - [0.10, 0.00, 0.10]   # L3
+  - [0.00, 0.00, 0.00]   # L4
+layer_requirements: [0.35, 0.45, 0.2, 0.0]
+match_threshold: 0.55
+coverage_threshold: 0.6
+hard_evidence:
+  - "同区块内围绕受害交易的前后两笔同向 swap（需区块内 tx_index 结构）"
+references: [DeFiRanger]
