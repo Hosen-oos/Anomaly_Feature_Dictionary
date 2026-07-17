@@ -151,6 +151,10 @@ class FundFlowScore(SignalExtractor):
             obs = np.array([digits.get(d, 0) for d in range(1, 10)], dtype=float)
             obs = obs / obs.sum()
             pat["benford"] = float(min(1.0, np.abs(obs - _BENFORD).sum()))
+        # 量值化参数：资金流总量、单边最大金额（log；ECDF 处理量纲）
+        if vals:
+            pat["total_flow_mag"] = float(np.log1p(sum(vals)))
+            pat["max_edge_mag"] = float(np.log1p(max(vals)))
         return pat
 
     def score(self, ctx: TxContext) -> Optional[float]:
@@ -163,7 +167,8 @@ class FundFlowScore(SignalExtractor):
 
     def evidence(self, ctx: TxContext) -> str:
         pat = self.params(ctx)
-        hits = [k for k, v in sorted(pat.items(), key=lambda x: -x[1]) if v > 0.3]
         zh = {"fan_in": "扇入聚集", "fan_out": "扇出分发", "cycle": "环形转账回流",
               "relay": "多跳中转节点", "benford": "金额分布偏离Benford"}
-        return "资金流模式: " + ("、".join(zh[h] for h in hits) if hits else "无显著模式")
+        hits = [zh[k] for k, v in sorted(pat.items(), key=lambda x: -x[1])
+                if k in zh and v > 0.3]
+        return "资金流模式: " + ("、".join(hits) if hits else "无显著模式")

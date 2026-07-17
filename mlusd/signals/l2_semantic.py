@@ -125,23 +125,25 @@ class EconomicAnomalyScore(SignalExtractor):
         r["swap_chain"] = min(1.0, max(0, kinds.count("swap") - 1) / 3.0)
         # 流动性撤出占比
         r["liquidity_exit"] = min(1.0, kinds.count("remove_liquidity") / max(n * 0.3, 1))
-        # 无本获利：发起方净流入为正且无对应流出（DeFort 利润口径的简化）
-        inflow = defaultdict(float)
-        for a in actions:
-            if a.kind == "transfer" and a.amount_in > 0:
-                to = str(a.protocol and a.actor)  # actor 为 from；流入需看 args to
-        # 用 transfer 的 from/to 精确计算
+        # 发起方净流入（DeFort 利润口径）+ 幅度参数（量值化，从已解码 Transfer 计算，无需重取）
         sender = ctx.from_address
         net = 0.0
+        amts = []
         for log in ctx.event_logs or []:
             if log.event != "Transfer":
                 continue
             v = float(log.args.get("value", 0) or 0)
+            amts.append(v)
             if str(log.args.get("to", "")) == sender:
                 net += v
             if str(log.args.get("from", "")) == sender:
                 net -= v
         r["free_profit"] = 1.0 if (net > 0 and ctx.value == 0 and n >= 3) else 0.0
+        # 量值化参数：利润幅度、单笔最大转移、总交易量（log，ECDF 处理量纲）
+        r["net_profit_mag"] = math.log1p(net) if net > 0 else 0.0
+        if amts:
+            r["max_transfer_mag"] = math.log1p(max(amts))
+            r["total_volume_mag"] = math.log1p(sum(amts))
         return r
 
     def score(self, ctx: TxContext) -> Optional[float]:
@@ -150,14 +152,15 @@ class EconomicAnomalyScore(SignalExtractor):
             return None
         w = {"flashloan": 0.30, "borrow_repay": 0.20, "swap_chain": 0.20,
              "liquidity_exit": 0.15, "free_profit": 0.15}
-        return float(sum(w[k] * v for k, v in r.items()))
+        return float(sum(w[k] * v for k, v in r.items() if k in w))
 
     def evidence(self, ctx: TxContext) -> str:
         r = self.params(ctx)
         zh = {"flashloan": "闪电贷", "borrow_repay": "借还闭环",
               "swap_chain": "连环swap", "liquidity_exit": "流动性撤出",
               "free_profit": "零成本净获利"}
-        hits = [zh[k] for k, v in sorted(r.items(), key=lambda x: -x[1]) if v >= 0.5]
+        hits = [zh[k] for k, v in sorted(r.items(), key=lambda x: -x[1])
+                if k in zh and v >= 0.5]
         return "经济模式: " + ("、".join(hits) if hits else "无显著模式")
 
 
