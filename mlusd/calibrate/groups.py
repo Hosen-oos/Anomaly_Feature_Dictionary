@@ -21,12 +21,17 @@ def parent_group(g: str) -> str | None:
 class GroupResolver:
     """记录校准集里各组样本量，把小组解析到样本充足的父组。"""
 
-    def __init__(self, min_group_size: int = 500):
+    def __init__(self, min_group_size: int = 500, single_group: bool = False):
         self.min_group_size = min_group_size
+        self.single_group = single_group    # 消融：True 时全体共用一个 ECDF
         self.counts: dict[str, int] = {}
         self._fitted_groups: set[str] = set()
 
     def fit(self, masks: list[tuple[int, int, int, int]]) -> None:
+        if self.single_group:
+            self.counts = {"ALL": len(masks)}
+            self._fitted_groups = {"ALL"}
+            return
         self.counts = {}
         for m in masks:
             g = group_key(m)
@@ -41,6 +46,8 @@ class GroupResolver:
 
     def resolve(self, mask: tuple[int, int, int, int]) -> str:
         """返回该交易实际使用的校准组（沿父链向下走到有校准数据的组）。"""
+        if self.single_group:
+            return "ALL"
         g = group_key(mask)
         cur: str | None = g
         while cur is not None:

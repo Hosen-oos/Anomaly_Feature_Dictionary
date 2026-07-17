@@ -31,11 +31,12 @@ class ParamProvider(Protocol):
 class DictSignal(SignalExtractor):
     """把多参数内层聚合成单个格值（max 分位数），对外仍是标准 SignalExtractor。"""
 
-    def __init__(self, inner: ParamProvider):
+    def __init__(self, inner: ParamProvider, agg: str = "max"):
         self.inner = inner
         self.layer = inner.layer
         self.angle = inner.angle
         self.name = inner.name
+        self.agg = agg            # max（非稀释，默认）/ mean（消融，稀释对照）
         self._ecdf: dict[str, np.ndarray] = {}
 
     def fit(self, normal_contexts: list[TxContext]) -> None:
@@ -66,7 +67,10 @@ class DictSignal(SignalExtractor):
         qs = self._param_quantiles(ctx)
         if not qs:
             return None
-        return max(q for _, q in qs)     # 非稀释：任一参数极端即格异常
+        vals = [q for _, q in qs]
+        if self.agg == "mean":
+            return float(sum(vals) / len(vals))    # 消融：均值（稀释）
+        return max(vals)                           # 非稀释：任一参数极端即格异常
 
     def top_param(self, ctx: TxContext) -> Optional[str]:
         qs = self._param_quantiles(ctx)

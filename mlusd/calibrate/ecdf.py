@@ -23,8 +23,8 @@ from mlusd.types import N_ANGLES, N_LAYERS, VALID_POSITIONS
 class ECDFCalibrator:
     """按 (校准组, 层, 角度) 存正常分数的排序数组，查询时给出 Q/T。"""
 
-    def __init__(self, min_group_size: int = 500):
-        self.resolver = GroupResolver(min_group_size)
+    def __init__(self, min_group_size: int = 500, single_group: bool = False):
+        self.resolver = GroupResolver(min_group_size, single_group=single_group)
         # {(group, layer, angle): 升序 ndarray}
         self._sorted: dict[tuple[str, int, int], np.ndarray] = {}
 

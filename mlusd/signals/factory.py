@@ -29,6 +29,20 @@ def default_extractors() -> list[SignalExtractor]:
     ]
 
 
+def ablation_extractors(cell_agg: str = "max") -> list[SignalExtractor]:
+    """消融用：cell_agg='mean' 让参数池格用均值聚合（稀释对照），其余同 default。"""
+    return [
+        GraphDistributionScore(),
+        DictSignal(FundFlowScore(), agg=cell_agg),
+        ActionSequenceRarity(),
+        DictSignal(EconomicAnomalyScore(), agg=cell_agg),
+        DictSignal(ApprovalMismatchScore(), agg=cell_agg),
+        TraceNgramRarity(),
+        DictSignal(TracePropertyScore(), agg=cell_agg),
+        OffchainConsistencyScore(),
+    ]
+
+
 def v1_extractors(**nn_kwargs) -> list[SignalExtractor]:
     """v1：把 L1-j1/L2-j1/L3-j1 换成学习模型，其余保持 v0 规则版。
 

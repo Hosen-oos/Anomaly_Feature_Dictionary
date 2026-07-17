@@ -23,7 +23,9 @@ class Detector:
                  extractors: list[SignalExtractor],
                  dictionaries: list[AttackDictionary],
                  alpha: float = 0.01,
-                 min_group_size: int = 500):
+                 min_group_size: int = 500,
+                 single_group: bool = False,
+                 openset_mode: str = "fisher"):
         seen = set()
         for e in extractors:
             key = (e.layer, e.angle)
@@ -32,8 +34,9 @@ class Detector:
         self.extractors = extractors
         self.dictionaries = dictionaries
         self._req = {d.attack_type: d.layer_requirements for d in dictionaries}
-        self.calibrator = ECDFCalibrator(min_group_size=min_group_size)
-        self.openset = OpenSetCalibrator(alpha=alpha)
+        self.calibrator = ECDFCalibrator(min_group_size=min_group_size,
+                                         single_group=single_group)
+        self.openset = OpenSetCalibrator(alpha=alpha, mode=openset_mode)
         self._fitted = False
 
     # ------------------------------------------------------------- 内部
