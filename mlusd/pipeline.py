@@ -25,7 +25,8 @@ class Detector:
                  alpha: float = 0.01,
                  min_group_size: int = 500,
                  single_group: bool = False,
-                 openset_mode: str = "fisher"):
+                 openset_mode: str = "fisher",
+                 openset_aggregator: str = "learned"):
         seen = set()
         for e in extractors:
             key = (e.layer, e.angle)
@@ -36,7 +37,11 @@ class Detector:
         self._req = {d.attack_type: d.layer_requirements for d in dictionaries}
         self.calibrator = ECDFCalibrator(min_group_size=min_group_size,
                                          single_group=single_group)
-        self.openset = OpenSetCalibrator(alpha=alpha, mode=openset_mode)
+        if openset_aggregator == "learned":
+            from mlusd.openset.learned import LearnedOpenSetCalibrator
+            self.openset = LearnedOpenSetCalibrator(alpha=alpha)
+        else:
+            self.openset = OpenSetCalibrator(alpha=alpha, mode=openset_mode)
         self._fitted = False
 
     # ------------------------------------------------------------- 内部
