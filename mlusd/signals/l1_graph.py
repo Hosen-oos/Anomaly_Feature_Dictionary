@@ -151,8 +151,8 @@ class FundFlowScore(SignalExtractor):
             obs = np.array([digits.get(d, 0) for d in range(1, 10)], dtype=float)
             obs = obs / obs.sum()
             pat["benford"] = float(min(1.0, np.abs(obs - _BENFORD).sum()))
-        # 量值化参数：资金流总量、单边最大金额（log；ECDF 处理量纲）
-        if vals:
+        # 量值化参数：资金流总量、单边最大金额（log；ECDF 处理量纲）。use_magnitude 供消融
+        if getattr(self, "use_magnitude", True) and vals:
             pat["total_flow_mag"] = float(np.log1p(sum(vals)))
             pat["max_edge_mag"] = float(np.log1p(max(vals)))
         return pat

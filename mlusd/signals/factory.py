@@ -11,17 +11,21 @@ from mlusd.signals.l4_offchain import OffchainConsistencyScore
 from mlusd.signals.pool import DictSignal
 
 
-def default_extractors() -> list[SignalExtractor]:
+def default_extractors(magnitude: bool = True) -> list[SignalExtractor]:
     """8 个有效信号位置的 v0 提取器，覆盖 (l,j) ∈ VALID_POSITIONS。
 
     多参数规则格（L1-j2/L2-j2/L2-j3/L3-j3）用 DictSignal 做非稀释 max 分位数聚合
     （方案定稿 §2.1）；单参数学习格（L1-j1/L2-j1/L3-j1）与 L4-j3 直接用其提取器。
+    magnitude=False 关闭量值化参数（供消融）。
     """
+    ff, econ = FundFlowScore(), EconomicAnomalyScore()
+    ff.use_magnitude = magnitude
+    econ.use_magnitude = magnitude
     return [
         GraphDistributionScore(),          # L1-j1（单参数：IForest）
-        DictSignal(FundFlowScore()),       # L1-j2（参数池）
+        DictSignal(ff),                    # L1-j2（参数池）
         ActionSequenceRarity(),            # L2-j1（单参数：n-gram）
-        DictSignal(EconomicAnomalyScore()),  # L2-j2（参数池）
+        DictSignal(econ),                  # L2-j2（参数池）
         DictSignal(ApprovalMismatchScore()),  # L2-j3（参数池）
         TraceNgramRarity(),                # L3-j1（单参数：n-gram）
         DictSignal(TracePropertyScore()),  # L3-j3（参数池）

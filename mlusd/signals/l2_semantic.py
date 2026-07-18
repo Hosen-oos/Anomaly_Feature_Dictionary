@@ -139,11 +139,12 @@ class EconomicAnomalyScore(SignalExtractor):
             if str(log.args.get("from", "")) == sender:
                 net -= v
         r["free_profit"] = 1.0 if (net > 0 and ctx.value == 0 and n >= 3) else 0.0
-        # 量值化参数：利润幅度、单笔最大转移、总交易量（log，ECDF 处理量纲）
-        r["net_profit_mag"] = math.log1p(net) if net > 0 else 0.0
-        if amts:
-            r["max_transfer_mag"] = math.log1p(max(amts))
-            r["total_volume_mag"] = math.log1p(sum(amts))
+        # 量值化参数：利润幅度、单笔最大转移、总交易量（log，ECDF 处理量纲）。use_magnitude 供消融
+        if getattr(self, "use_magnitude", True):
+            r["net_profit_mag"] = math.log1p(net) if net > 0 else 0.0
+            if amts:
+                r["max_transfer_mag"] = math.log1p(max(amts))
+                r["total_volume_mag"] = math.log1p(sum(amts))
         return r
 
     def score(self, ctx: TxContext) -> Optional[float]:
