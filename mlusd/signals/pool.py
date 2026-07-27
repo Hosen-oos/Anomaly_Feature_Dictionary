@@ -76,5 +76,10 @@ class DictSignal(SignalExtractor):
         qs = self._param_quantiles(ctx)
         return max(qs, key=lambda x: x[1])[0] if qs else None
 
+    def param_quantiles(self, ctx: TxContext) -> dict[str, float]:
+        """公开接口：格内各参数的校准分位数 {参数名: q}。供 M4 per-param 字典匹配
+        与否定证据（veto）使用——格值聚合会抹掉"哪个参数触发"这一判别信息。"""
+        return dict(self._param_quantiles(ctx))
+
     def evidence(self, ctx: TxContext) -> str:
         return self.inner.evidence(ctx)
