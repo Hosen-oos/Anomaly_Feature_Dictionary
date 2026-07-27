@@ -56,6 +56,27 @@ EVENT_SIGNATURES: dict[str, tuple[str, list[str], list[str]]] = {
         ("Burn", [], []),                        # UniV2 Burn (remove liquidity)
     "0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c":
         ("Burn", [], []),                        # UniV3 Burn
+    # --- 扩充闪电贷提供方覆盖（原仅 Aave V2/V3 → 仅 20% 闪电贷攻击被识别）---
+    "0xbdbdb71d7860376ba52b25a5028beea23581364a40522f6bcfb86bb1f2dca633":
+        ("FlashLoan", [], []),                   # Uniswap V3 Flash
+    "0x0d7d75e01ab95780d3cd1c8ec0dd6c2ce19e3a20427eec8bf53283b6fb8e95f0":
+        ("FlashLoan", [], []),                   # Balancer V2 / MakerDAO DssFlash
+    "0x5b8f46461c1dd69fb968f1a003acee221ea3e19540e350233b612ddb43433b55":
+        ("FlashLoan", [], []),                   # Aave V1 FlashLoan
+    "0x3659d15bd4bb92ab352a8d35bc3119ec6e7e0ab48e4d46201c8a28e02b6a8a86":
+        ("FlashLoan", [], []),                   # ERC-3156 标准闪电贷
+    # --- Compound 系借贷（及其大量 fork）---
+    "0x13ed6866d4e1ee6da46f845c46d7e54120883d75c5ea9a2dacc1c4ca8984ab80":
+        ("Borrow", [], []),                      # Compound Borrow
+    "0x1a2a22cb034d26d1854bdc6666a5b91fe25efbbb5dcad3b0355478d6f5c362a1":
+        ("Repay", [], []),                       # Compound RepayBorrow
+    "0xe5b754fb1abb7f01b499791d0b820ae3b6af3424ac1c59768edb53f4ec31a929":
+        ("Withdraw", [], []),                    # Compound Redeem
+    "0x7249bd9103215ff3a87e53b044a45edf515043e5aaf8718200ecec228cf3728a":
+        ("Withdraw", [], []),                    # dYdX SoloMargin LogWithdraw
+    # --- AMM 储备同步：价格操控核心信号，此前一直是 Unknown_1c411e9a（rug_pull 中出现 96 次）---
+    "0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1":
+        ("Sync", [], []),                        # Uniswap V2 Sync（储备变化）
 }
 
 # topic0 前 8 位（不含 0x）-> 标准事件名。用于从已缓存 context 里的

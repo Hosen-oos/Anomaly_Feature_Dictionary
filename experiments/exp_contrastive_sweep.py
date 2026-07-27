@@ -79,6 +79,19 @@ def main():
         cnt = "/".join(str(per[t]) for t in types)
         print(f"{lam:>5.1f}{correct/n*100:>8.0f}%   {cnt}{tag}")
 
+    # 标注歧义检验：flash_loan 与 price_manipulation 合并为"闪电贷驱动经济攻击"家族
+    # （二者定义天然重叠：闪电贷驱动的预言机操控同时满足两类定义）
+    FAM = {"flash_loan": "econ_fl", "price_manipulation": "econ_fl"}
+    print("\n=== 标注歧义检验：合并 flash_loan + price_manipulation 后 ===")
+    for lam in [0.0, 0.5]:
+        correct = 0
+        for t, qs in cache:
+            sc = {k: contrastive_score(p, qs, lam)[0] for k, p in profiles.items()}
+            pred = max(sc, key=sc.get)
+            if FAM.get(pred, pred) == FAM.get(t, t):
+                correct += 1
+        print(f"  λ={lam}: 准确率 {correct}/{n} = {correct/n*100:.0f}%")
+
 
 if __name__ == "__main__":
     main()
