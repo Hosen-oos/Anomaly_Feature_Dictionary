@@ -145,6 +145,10 @@ class EconomicAnomalyScore(SignalExtractor):
             if amts:
                 r["max_transfer_mag"] = math.log1p(max(amts))
                 r["total_volume_mag"] = math.log1p(sum(amts))
+        # 利润归因（资金流形态，与代币小数位无关的比值）——针对 flash vs price 重叠
+        if getattr(self, "use_attribution", True):
+            from mlusd.signals.profit import attribution_params
+            r.update(attribution_params(ctx))
         return r
 
     def score(self, ctx: TxContext) -> Optional[float]:
