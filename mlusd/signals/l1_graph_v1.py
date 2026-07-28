@@ -56,13 +56,20 @@ class GraphAutoencoder(SignalExtractor):
 
     def __init__(self, hidden: int = 16, emb: int = 8, epochs: int = 3,
                  lr: float = 1e-2, max_graphs: int = 800, seed: int = 0,
-                 alpha: float = 0.7):
+                 alpha: float = 0.7, device: str = "auto"):
         self.hidden, self.emb = hidden, emb
         self.epochs, self.lr, self.max_graphs = epochs, lr, max_graphs
         self.seed, self.alpha = seed, alpha
+        self.device = device            # "auto"|"cuda"|"cpu"
         self._model = None
         self._mu = None
         self._sigma = None
+
+    def _dev(self):
+        import torch
+        if self.device == "auto":
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        return self.device
 
     def _standardize(self, X):
         return (X - self._mu) / self._sigma
@@ -98,14 +105,15 @@ class GraphAutoencoder(SignalExtractor):
                 X_hat = s.dec(z)                       # 属性解码
                 return A_hat, X_hat
 
-        self._model = GAE(_FEAT_DIM, self.hidden, self.emb)
+        dev = self._dev()
+        self._model = GAE(_FEAT_DIM, self.hidden, self.emb).to(dev)
         opt = torch.optim.Adam(self._model.parameters(), lr=self.lr)
         self._model.train()
         for _ in range(self.epochs):
             for X, A, _ in graphs:
-                Xn = torch.tensor(self._standardize(X))
-                An = torch.tensor(_norm_adj(A))
-                At = torch.tensor(A)
+                Xn = torch.tensor(self._standardize(X)).to(dev)
+                An = torch.tensor(_norm_adj(A)).to(dev)
+                At = torch.tensor(A).to(dev)
                 A_hat, X_hat = self._model(Xn, An)
                 loss = (self.alpha * nn.functional.mse_loss(A_hat, At)
                         + (1 - self.alpha) * nn.functional.mse_loss(X_hat, Xn))
@@ -120,12 +128,13 @@ class GraphAutoencoder(SignalExtractor):
             return None
         import torch
         X, A, c = t
+        dev = self._dev()
         with torch.no_grad():
-            Xn = torch.tensor(self._standardize(X))
-            An = torch.tensor(_norm_adj(A))
+            Xn = torch.tensor(self._standardize(X)).to(dev)
+            An = torch.tensor(_norm_adj(A)).to(dev)
             A_hat, X_hat = self._model(Xn, An)
             # 中心节点重构误差 = 结构行误差 + 属性误差
-            struct_err = float(((A_hat[c] - torch.tensor(A[c])) ** 2).mean())
+            struct_err = float(((A_hat[c] - torch.tensor(A[c]).to(dev)) ** 2).mean())
             attr_err = float(((X_hat[c] - Xn[c]) ** 2).mean())
         return self.alpha * struct_err + (1 - self.alpha) * attr_err
 

@@ -75,13 +75,20 @@ class SequenceLMExtractor(SignalExtractor):
     def __init__(self, tokens_of: Callable[[TxContext], list[str]],
                  d_model: int = 64, n_head: int = 2, n_layer: int = 2,
                  block_size: int = 48, epochs: int = 8, lr: float = 3e-3,
-                 batch_size: int = 128, seed: int = 0):
+                 batch_size: int = 128, seed: int = 0, device: str = "auto"):
         self.tokens_of = tokens_of
         self.d_model, self.n_head, self.n_layer = d_model, n_head, n_layer
         self.block_size, self.epochs, self.lr = block_size, epochs, lr
         self.batch_size, self.seed = batch_size, seed
+        self.device = device            # "auto"|"cuda"|"cpu"
         self._model = None
         self._vocab: Optional[_Vocab] = None
+
+    def _dev(self):
+        import torch
+        if self.device == "auto":
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        return self.device
 
     # ------------------------------------------------------------- 训练
 
@@ -96,8 +103,9 @@ class SequenceLMExtractor(SignalExtractor):
         self._vocab = _Vocab(flat)
         encoded = [self._vocab.encode(s)[:self.block_size] for s in seqs]
 
+        dev = self._dev()
         self._model = _build_model(nn, len(self._vocab), self.d_model,
-                                   self.n_head, self.n_layer, self.block_size)
+                                   self.n_head, self.n_layer, self.block_size).to(dev)
         opt = torch.optim.Adam(self._model.parameters(), lr=self.lr)
         pad = self._vocab.stoi[PAD]
         self._model.train()
@@ -107,6 +115,7 @@ class SequenceLMExtractor(SignalExtractor):
             for i in range(0, len(order), self.batch_size):
                 batch = [encoded[j] for j in order[i:i + self.batch_size]]
                 x, y = self._to_xy(torch, batch, pad)
+                x, y = x.to(dev), y.to(dev)
                 logits = self._model(x)
                 loss = nn.functional.cross_entropy(
                     logits.reshape(-1, logits.size(-1)), y.reshape(-1),
@@ -136,9 +145,10 @@ class SequenceLMExtractor(SignalExtractor):
         ids = self._vocab.encode(seq)[:self.block_size]
         if len(ids) < 2:
             return None
+        dev = self._dev()
         with torch.no_grad():
-            x = torch.tensor(ids[:-1], dtype=torch.long).unsqueeze(0)
-            y = torch.tensor(ids[1:], dtype=torch.long).unsqueeze(0)
+            x = torch.tensor(ids[:-1], dtype=torch.long).unsqueeze(0).to(dev)
+            y = torch.tensor(ids[1:], dtype=torch.long).unsqueeze(0).to(dev)
             logits = self._model(x)
             ce = nn.functional.cross_entropy(
                 logits.reshape(-1, logits.size(-1)), y.reshape(-1))
