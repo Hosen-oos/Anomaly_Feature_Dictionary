@@ -19,19 +19,35 @@ from mlusd.types import VALID_POSITIONS
 
 
 class LearnedOpenSetCalibrator:
-    def __init__(self, alpha: float = 0.01, n_estimators: int = 200, seed: int = 0):
+    def __init__(self, alpha: float = 0.01, n_estimators: int = 200, seed: int = 0,
+                 dual_tail: bool = False):
         self.alpha = alpha
         self.n_estimators = n_estimators
         self.seed = seed
         self.mode = "learned"
+        # dual_tail：上尾与下尾都作为特征（8→16 维），让聚合器自行学出每个信号的异常方向。
+        # 动机（实测）：全局双侧折叠会稀释"大即异常"的经济类（flash/price 掉 0.14–0.15），
+        # 单侧又漏掉"小即异常"的类型（ponzi/地址投毒）。两尾并列则无需先验二选一。
+        self.dual_tail = dual_tail
         self._model = None
         self._sorted: dict[str, np.ndarray] = {}
 
     def _vec(self, Q: np.ndarray, mask) -> np.ndarray:
-        """8 维校准分位向量；缺失/不可用位置填 0（=该信号不异常）。"""
-        return np.asarray([
-            Q[l - 1, j - 1] if (mask[l - 1] and np.isfinite(Q[l - 1, j - 1])) else 0.0
-            for (l, j) in VALID_POSITIONS], dtype=float)
+        """校准分位向量。dual_tail=False → 8 维 q（缺失填 0）；
+        True → 16 维 [上尾强度, 下尾强度]（缺失填中性 q=0.5）。"""
+        qs = []
+        for (l, j) in VALID_POSITIONS:
+            v = Q[l - 1, j - 1]
+            ok = mask[l - 1] and np.isfinite(v)
+            qs.append(float(v) if ok else (0.5 if self.dual_tail else 0.0))
+        if not self.dual_tail:
+            return np.asarray(qs, dtype=float)
+        eps = 1e-6
+        out = []
+        for q in qs:
+            out.append(-np.log(1.0 - min(q, 1.0 - eps)))   # 上尾：q→1 增大
+            out.append(-np.log(max(q, eps)))               # 下尾：q→0 增大
+        return np.asarray(out, dtype=float)
 
     def fit(self, Qs, masks, resolver: GroupResolver) -> None:
         from sklearn.ensemble import IsolationForest

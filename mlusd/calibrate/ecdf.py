@@ -23,8 +23,13 @@ from mlusd.types import N_ANGLES, N_LAYERS, VALID_POSITIONS
 class ECDFCalibrator:
     """按 (校准组, 层, 角度) 存正常分数的排序数组，查询时给出 Q/T。"""
 
-    def __init__(self, min_group_size: int = 500, single_group: bool = False):
+    def __init__(self, min_group_size: int = 500, single_group: bool = False,
+                 two_sided: bool = False):
         self.resolver = GroupResolver(min_group_size, single_group=single_group)
+        # two_sided：双侧校准——"异常地小"也算异常。默认 False（单侧，只看上尾）。
+        # 动机（PTXPHISH 实测）：payable 函数诈骗、地址投毒（零值/粉尘转账）等类型的特征是
+        # 异常地"简单/小"，单侧校准把它们排成"比正常更正常"（AUROC 0.18，信号方向反了）。
+        self.two_sided = two_sided
         # {(group, layer, angle): 升序 ndarray}
         self._sorted: dict[tuple[str, int, int], np.ndarray] = {}
 
@@ -60,6 +65,10 @@ class ECDFCalibrator:
                 continue
             n = len(ref)
             q = np.searchsorted(ref, v, side="left") / (n + 1)
+            if self.two_sided:
+                # 双侧：取两尾中更极端的一侧作为"异常度"，仍落在 [0,1]
+                #   q'=2|q-0.5| → 0.5 处为 0（最典型），两端趋近 1（最异常）
+                q = min(1.0 - 1.0 / (n + 1), 2.0 * abs(q - 0.5))
             Q[l - 1, j - 1] = q
             T[l - 1, j - 1] = -np.log(1.0 - q) / np.log(n + 1)
         return Q, T, g

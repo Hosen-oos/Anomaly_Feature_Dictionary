@@ -31,12 +31,15 @@ class ParamProvider(Protocol):
 class DictSignal(SignalExtractor):
     """把多参数内层聚合成单个格值（max 分位数），对外仍是标准 SignalExtractor。"""
 
-    def __init__(self, inner: ParamProvider, agg: str = "max"):
+    def __init__(self, inner: ParamProvider, agg: str = "max",
+                 two_sided: bool = False):
         self.inner = inner
         self.layer = inner.layer
         self.angle = inner.angle
         self.name = inner.name
         self.agg = agg            # max（非稀释，默认）/ mean（消融，稀释对照）
+        # two_sided：参数级双侧——"异常地小"也算异常（零值/粉尘转账类钓鱼）
+        self.two_sided = two_sided
         self._ecdf: dict[str, np.ndarray] = {}
 
     def fit(self, normal_contexts: list[TxContext]) -> None:
@@ -60,6 +63,8 @@ class DictSignal(SignalExtractor):
             if ref is None or len(ref) == 0 or v is None or not np.isfinite(v):
                 continue
             q = float(np.searchsorted(ref, v, side="left") / (len(ref) + 1))
+            if self.two_sided:
+                q = min(1.0 - 1.0 / (len(ref) + 1), 2.0 * abs(q - 0.5))
             out.append((k, q))
         return out
 
