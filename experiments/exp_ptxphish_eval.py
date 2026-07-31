@@ -77,16 +77,34 @@ def main():
     print(f"  C' PTXPHISH 钓鱼 vs 硬负样本   AUROC = "
           f"{auroc(scores(det_h, ptx_a), scores(det_h, ptx_b[n_hard:])):.3f}")
 
-    # 分子类型（手法级）
+    # 分子类型（手法级）：vs 正常 与 vs 硬负样本 两个设定，并给出 95% 自助置信区间
     from collections import defaultdict
+    import numpy as np
     by = defaultdict(list)
     for c in ptx_a:
         by[c.latent.get("subtype", "?")].append(c)
-    print("\n=== 分手法子类型 AUROC（vs 正常，n≥15）===")
-    sa_all = scores(det, ptx_a)
+    sb = scores(det, ptx_b)
+
+    def boot_ci(sa, sn_, n_boot=300, seed=0):
+        rng = np.random.default_rng(seed)
+        vals = []
+        for _ in range(n_boot):
+            ia = rng.integers(0, len(sa), len(sa))
+            inn = rng.integers(0, len(sn_), len(sn_))
+            vals.append(auroc(sa[ia], sn_[inn]))
+        return np.percentile(vals, 2.5), np.percentile(vals, 97.5)
+
+    print("\n=== 分手法子类型 AUROC（n≥15；括号为 95% 自助置信区间）===")
+    print(f"{'子类型':<34}{'n':>6}{'vs正常':>20}{'vs硬负样本':>20}")
     for t, cs in sorted(by.items(), key=lambda x: -len(x[1])):
-        if len(cs) >= 15:
-            print(f"  {t:<34} {auroc(scores(det, cs), sn):.3f}  (n={len(cs)})")
+        if len(cs) < 15:
+            continue
+        sa = scores(det, cs)
+        a, (lo, hi) = auroc(sa, sn), boot_ci(sa, sn)
+        b, (lo2, hi2) = auroc(sa, sb), boot_ci(sa, sb)
+        print(f"{t:<34}{len(cs):>6}"
+              f"{f'{a:.3f} [{lo:.2f},{hi:.2f}]':>20}"
+              f"{f'{b:.3f} [{lo2:.2f},{hi2:.2f}]':>20}")
 
 
 if __name__ == "__main__":
