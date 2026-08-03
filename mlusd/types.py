@@ -61,10 +61,16 @@ class TraceSummary:
 
 @dataclass
 class OffchainRecord:
-    """链下情报：标签命中与项目背景。"""
+    """链下情报：标签命中、项目背景与合约结构性元信息。
+
+    contract_meta 为**不泄漏**的通用属性（部署时长/字节码规模/标准符合性），
+    区别于恶意地址标签——后者在离线评测中要么覆盖为 0，要么构成标签泄漏。
+    """
     label_hits: list[dict] = field(default_factory=list)  # {address,label,source,severity(0-1)}
     contract_verified: Optional[bool] = None
     audited: Optional[bool] = None
+    # {age_days: float, bytecode_len: int, is_token: bool}
+    contract_meta: dict = field(default_factory=dict)
 
 
 @dataclass

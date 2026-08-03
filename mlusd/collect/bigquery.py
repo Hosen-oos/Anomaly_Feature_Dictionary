@@ -93,6 +93,19 @@ FROM `bigquery-public-data.crypto_ethereum.blocks`
 WHERE number IN UNNEST(@blocks)
 """
 
+# 合约元信息（L4 广义化：**不泄漏**的结构性链下信号）
+# 部署时间/标准符合性/字节码规模都是通用属性，不是从"该地址是否作恶"推出来的，
+# 故不构成标签泄漏——区别于恶意地址黑名单（公开黑名单对 DeFi 攻击覆盖为 0）。
+CONTRACT_META = """
+SELECT address,
+       UNIX_SECONDS(block_timestamp) AS created_ts,
+       block_number AS created_block,
+       is_erc20, is_erc721,
+       LENGTH(bytecode) AS bytecode_len
+FROM `bigquery-public-data.crypto_ethereum.contracts`
+WHERE address IN UNNEST(@addrs)
+"""
+
 # 指定日期集合 + 指定 hash 集合的单次查询（D_known：3 次查询取完所有攻击，非逐日期）
 # DATE IN UNNEST 裁剪到恰好那些分区，扫描字节与逐日期相同但查询次数从 3N 降到 3。
 TXS_FOR_HASHES_DATES = """
@@ -266,6 +279,21 @@ class BigQuerySource:
                  "value": float(r["value"] or 0),
                  "ts": int(r["block_timestamp"].timestamp()) if r["block_timestamp"] else 0}
                 for r in rows]
+
+    def contract_meta(self, addresses: list[str], dry_run: bool = False):
+        """合约元信息 {address: {created_ts, created_block, is_erc20, is_erc721,
+        bytecode_len}}。供 L4 广义化使用——不泄漏的结构性信号。"""
+        params = [self._bq.ArrayQueryParameter(
+            "addrs", "STRING", sorted({a.lower() for a in addresses}))]
+        if dry_run:
+            return self.estimate_bytes(CONTRACT_META, params)
+        rows = self._client.query(CONTRACT_META, job_config=self._cfg(params)).result()
+        return {r["address"]: {"created_ts": int(r["created_ts"] or 0),
+                               "created_block": int(r["created_block"] or 0),
+                               "is_erc20": bool(r["is_erc20"]),
+                               "is_erc721": bool(r["is_erc721"]),
+                               "bytecode_len": int(r["bytecode_len"] or 0)}
+                for r in rows}
 
     def dates_for_blocks(self, block_numbers: list[int], dry_run: bool = False):
         """区块号 -> 'YYYY-MM-DD'。用于补研究一种子缺失的精确日期。"""

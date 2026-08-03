@@ -29,7 +29,7 @@ def default_extractors(magnitude: bool = True) -> list[SignalExtractor]:
         DictSignal(ApprovalMismatchScore()),  # L2-j3（参数池）
         TraceNgramRarity(),                # L3-j1（单参数：n-gram）
         DictSignal(TracePropertyScore()),  # L3-j3（参数池）
-        OffchainConsistencyScore(),        # L4-j3（含保护性 audited，保持加权）
+        DictSignal(OffchainConsistencyScore()),  # L4-j3（参数池：标签 + 合约结构性信号）
     ]
 
 
@@ -43,7 +43,7 @@ def ablation_extractors(cell_agg: str = "max") -> list[SignalExtractor]:
         DictSignal(ApprovalMismatchScore(), agg=cell_agg),
         TraceNgramRarity(),
         DictSignal(TracePropertyScore(), agg=cell_agg),
-        OffchainConsistencyScore(),
+        DictSignal(OffchainConsistencyScore(), agg=cell_agg),
     ]
 
 
