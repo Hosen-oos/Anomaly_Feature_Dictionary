@@ -103,6 +103,20 @@ WHERE DATE(block_timestamp) IN UNNEST(@dates)
 ORDER BY block_number, transaction_index
 """
 
+# 同区块的 Swap 事件（强三明治判定：需要方向与池子，而非仅 from/to 地址）
+# 文献共识的判定条件：同区块 + 同一流动性池 + swap 方向相反 + TA2 输入≈TA1 输出。
+# 仅靠 transactions 表拿不到方向，必须解析 logs 里的 Swap 事件。
+BLOCK_SWAPS = """
+SELECT block_number, transaction_hash, log_index, address, topics, data
+FROM `bigquery-public-data.crypto_ethereum.logs`
+WHERE DATE(block_timestamp) IN UNNEST(@dates)
+  AND block_number IN UNNEST(@blocks)
+  AND topics[SAFE_OFFSET(0)] IN (
+    '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822',
+    '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67')
+ORDER BY block_number, log_index
+"""
+
 # 合约元信息（L4 广义化：**不泄漏**的结构性链下信号）
 # 部署时间/标准符合性/字节码规模都是通用属性，不是从"该地址是否作恶"推出来的，
 # 故不构成标签泄漏——区别于恶意地址黑名单（公开黑名单对 DeFi 攻击覆盖为 0）。
@@ -159,6 +173,22 @@ class BigQuerySource:
     def _cfg(self, params, dry_run: bool = False):
         return self._bq.QueryJobConfig(
             query_parameters=params, dry_run=dry_run, use_query_cache=not dry_run)
+
+    def _query(self, sql: str, params, retries: int = 3):
+        """带重试的查询——长查询偶发 SSL EOF，重试可恢复（缓存命中不额外计费）。"""
+        import time
+        last = None
+        for i in range(retries):
+            try:
+                return self._client.query(sql, job_config=self._cfg(params)).result()
+            except Exception as e:  # noqa: BLE001 - 网络类异常种类多，统一重试
+                last = e
+                if i < retries - 1:
+                    wait = 5 * (i + 1)
+                    print(f"    查询失败({type(e).__name__})，{wait}s 后重试 {i+1}/{retries-1}",
+                          flush=True)
+                    time.sleep(wait)
+        raise last
 
     def estimate_bytes(self, sql: str, params) -> int:
         """干跑：返回该查询将扫描的字节数（不真正执行、不计费）。"""
@@ -300,12 +330,30 @@ class BigQuerySource:
         ]
         if dry_run:
             return self.estimate_bytes(BLOCK_NEIGHBORS, params)
-        rows = self._client.query(BLOCK_NEIGHBORS, job_config=self._cfg(params)).result()
+        rows = self._query(BLOCK_NEIGHBORS, params)
         out: dict[int, list[dict]] = {}
         for r in rows:
             out.setdefault(int(r["block_number"]), []).append({
                 "index": int(r["transaction_index"]), "hash": r["hash"],
                 "from": r["from_address"], "to": r["to_address"]})
+        return out
+
+    def block_swaps(self, blocks: list[int], dates: list[str], dry_run: bool = False):
+        """同区块的 Swap 事件 {block: [{tx_hash, log_index, pool, topics, data}]}。
+        供强三明治判定使用——需要池子与方向，仅 from/to 地址不足。"""
+        params = [
+            self._bq.ArrayQueryParameter("dates", "DATE", sorted(set(dates))),
+            self._bq.ArrayQueryParameter("blocks", "INT64", sorted({int(b) for b in blocks})),
+        ]
+        if dry_run:
+            return self.estimate_bytes(BLOCK_SWAPS, params)
+        rows = self._query(BLOCK_SWAPS, params)
+        out: dict[int, list[dict]] = {}
+        for r in rows:
+            out.setdefault(int(r["block_number"]), []).append({
+                "tx_hash": r["transaction_hash"], "log_index": int(r["log_index"]),
+                "pool": r["address"], "topics": list(r["topics"] or []),
+                "data": r["data"] or "0x"})
         return out
 
     def contract_meta(self, addresses: list[str], dry_run: bool = False):
@@ -315,7 +363,7 @@ class BigQuerySource:
             "addrs", "STRING", sorted({a.lower() for a in addresses}))]
         if dry_run:
             return self.estimate_bytes(CONTRACT_META, params)
-        rows = self._client.query(CONTRACT_META, job_config=self._cfg(params)).result()
+        rows = self._query(CONTRACT_META, params)
         return {r["address"]: {"created_ts": int(r["created_ts"] or 0),
                                "created_block": int(r["created_block"] or 0),
                                "is_erc20": bool(r["is_erc20"]),

@@ -164,6 +164,10 @@ class FundFlowScore(SignalExtractor):
             pat["same_sender_around"] = 1.0 if bc.get("same_sender_around") else 0.0
             pat["adjacent_same_target"] = 1.0 if bc.get("adjacent_same_target") else 0.0
             pat["same_target_around"] = float(min(1.0, bc.get("same_target_around", 0) / 2.0))
+        # 强三明治判定（文献共识条件：同池 + 反向 + 金额链接 + 中间夹受害者）
+        sw = ctx.latent.get("sandwich_ctx")
+        if sw:
+            pat.update({k: float(v) for k, v in sw.items()})
         return pat
 
     def score(self, ctx: TxContext) -> Optional[float]:

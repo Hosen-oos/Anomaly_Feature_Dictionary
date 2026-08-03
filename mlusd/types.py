@@ -119,7 +119,8 @@ class TxContext:
         m4 = 1 if (self.offchain is not None and (
             self.offchain.label_hits
             or self.offchain.contract_verified is not None
-            or self.offchain.audited is not None)) else 0
+            or self.offchain.audited is not None
+            or self.offchain.contract_meta)) else 0   # 含合约结构性元信息（L4 广义化）
         return (m1, m2, m3, m4)
 
 
