@@ -93,6 +93,16 @@ FROM `bigquery-public-data.crypto_ethereum.blocks`
 WHERE number IN UNNEST(@blocks)
 """
 
+# 同区块邻近交易（跨交易上下文：三明治的前后夹击结构本质是跨交易的）
+# 取目标交易所在区块的全部交易的 (index, from, to)，用于判定夹击模式。
+BLOCK_NEIGHBORS = """
+SELECT block_number, transaction_index, `hash`, from_address, to_address
+FROM `bigquery-public-data.crypto_ethereum.transactions`
+WHERE DATE(block_timestamp) IN UNNEST(@dates)
+  AND block_number IN UNNEST(@blocks)
+ORDER BY block_number, transaction_index
+"""
+
 # 合约元信息（L4 广义化：**不泄漏**的结构性链下信号）
 # 部署时间/标准符合性/字节码规模都是通用属性，不是从"该地址是否作恶"推出来的，
 # 故不构成标签泄漏——区别于恶意地址黑名单（公开黑名单对 DeFi 攻击覆盖为 0）。
@@ -279,6 +289,24 @@ class BigQuerySource:
                  "value": float(r["value"] or 0),
                  "ts": int(r["block_timestamp"].timestamp()) if r["block_timestamp"] else 0}
                 for r in rows]
+
+    def block_neighbors(self, blocks: list[int], dates: list[str],
+                        dry_run: bool = False):
+        """同区块交易列表 {block_number: [{index, hash, from, to}, ...]}（按 index 排序）。
+        供跨交易上下文使用——三明治的前后夹击结构不在单笔交易内。"""
+        params = [
+            self._bq.ArrayQueryParameter("dates", "DATE", sorted(set(dates))),
+            self._bq.ArrayQueryParameter("blocks", "INT64", sorted({int(b) for b in blocks})),
+        ]
+        if dry_run:
+            return self.estimate_bytes(BLOCK_NEIGHBORS, params)
+        rows = self._client.query(BLOCK_NEIGHBORS, job_config=self._cfg(params)).result()
+        out: dict[int, list[dict]] = {}
+        for r in rows:
+            out.setdefault(int(r["block_number"]), []).append({
+                "index": int(r["transaction_index"]), "hash": r["hash"],
+                "from": r["from_address"], "to": r["to_address"]})
+        return out
 
     def contract_meta(self, addresses: list[str], dry_run: bool = False):
         """合约元信息 {address: {created_ts, created_block, is_erc20, is_erc721,

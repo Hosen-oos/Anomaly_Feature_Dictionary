@@ -155,6 +155,15 @@ class FundFlowScore(SignalExtractor):
         if getattr(self, "use_magnitude", True) and vals:
             pat["total_flow_mag"] = float(np.log1p(sum(vals)))
             pat["max_edge_mag"] = float(np.log1p(max(vals)))
+
+        # 跨交易上下文：三明治的"前后夹击"本质在**同区块的相邻交易**里，单笔交易看不见。
+        # 由 experiments/augment_block_context.py 预填 latent["block_ctx"]；缺失则不产出，
+        # 由掩码/参数池自然承接（异构可用性）。
+        bc = ctx.latent.get("block_ctx")
+        if bc:
+            pat["same_sender_around"] = 1.0 if bc.get("same_sender_around") else 0.0
+            pat["adjacent_same_target"] = 1.0 if bc.get("adjacent_same_target") else 0.0
+            pat["same_target_around"] = float(min(1.0, bc.get("same_target_around", 0) / 2.0))
         return pat
 
     def score(self, ctx: TxContext) -> Optional[float]:
