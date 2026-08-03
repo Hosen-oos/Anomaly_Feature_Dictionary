@@ -16,6 +16,30 @@ from collections import defaultdict
 
 EPS = 1e-9
 
+# 价值锚定代币（主网规范地址，小写）：用它们把利润折算成可比的"美元量级"，
+# 无需外部价格源——WETH 按近似 ETH 价、稳定币按 1:1。这是 DeFort 式利润口径的
+# 轻量实现：多数攻击的获利腿本就是 WETH 或稳定币。
+ANCHORS: dict[str, tuple[int, float]] = {
+    # 地址: (decimals, 单位美元价值)
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": (18, 2000.0),  # WETH
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": (6, 1.0),      # USDC
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": (6, 1.0),      # USDT
+    "0x6b175474e89094c44da98b954eedeac495271d0f": (18, 1.0),     # DAI
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": (8, 60000.0),  # WBTC
+    "0x4fabb145d64652a948d72533023f6e7a623c7c53": (18, 1.0),     # BUSD
+    "0x0000000000085d4780b73119b644ae5ecd22b376": (18, 1.0),     # TUSD
+}
+
+
+def anchor_usd(token: str, raw_amount: float) -> float | None:
+    """把锚定代币的原始额度折算为美元量级；非锚定代币返回 None。
+    单位价值取粗略常数——目的是**量级可比**（log 后进 ECDF），非精确估值。"""
+    info = ANCHORS.get((token or "").lower())
+    if not info:
+        return None
+    dec, px = info
+    return raw_amount / (10 ** dec) * px
+
 
 def build_ledger(ctx) -> dict:
     """(地址, 代币) -> {'in': 流入, 'out': 流出}。代币用发出 Transfer 的合约地址标识。"""
@@ -120,4 +144,26 @@ def attribution_params(ctx) -> dict[str, float]:
         tot_loss = sum(abs(n) for _, _, n, _, _, _ in recs if n < 0)
         pool_loss = sum(abs(n) for a, _, n, _, _, _ in recs if n < 0 and a in pools)
         r["pool_loss_share"] = float(pool_loss / (tot_loss + EPS)) if tot_loss > 0 else 0.0
+
+    # 9) 锚定美元利润（DeFort 式利润口径的轻量实现）
+    #    仅统计锚定代币（WETH/稳定币/WBTC）的净额——攻击的获利腿多为这些资产；
+    #    非锚定代币无价格无法折算，跳过而非猜测。log 压缩后交由 ECDF 校准。
+    import math
+    best_gain = 0.0
+    sender_gain = 0.0
+    sender = ctx.from_address
+    for addr, token, net, _, _, _ in recs:
+        if net <= 0:
+            continue
+        usd = anchor_usd(token, net)
+        if usd is None:
+            continue
+        best_gain = max(best_gain, usd)
+        if addr == sender:
+            sender_gain = max(sender_gain, usd)
+    if best_gain > 0:
+        r["usd_profit_mag"] = float(math.log1p(best_gain))
+        r["usd_profit_sender"] = float(math.log1p(sender_gain))
+        # 大额获利标记（≥10 万美元量级，攻击典型）
+        r["large_usd_profit"] = 1.0 if best_gain >= 1e5 else 0.0
     return r
