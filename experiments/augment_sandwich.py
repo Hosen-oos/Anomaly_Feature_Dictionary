@@ -50,8 +50,30 @@ def main():
         print(f"干跑：logs 表扫描 ~{gb:.1f} GB")
         return
 
-    swaps = bq.block_swaps(sorted(blocks), sorted(dates))
-    print(f"取到 {len(swaps)} 个区块的 Swap 事件")
+    # 原始 Swap 日志落盘缓存——判定逻辑若有修正可离线重算，避免重复付 BigQuery 费用
+    import gzip
+    import json
+    cache_p = ROOT / "data/cache/block_swaps.json.gz"
+    if cache_p.exists():
+        with gzip.open(cache_p, "rt", encoding="utf-8") as f:
+            swaps = {int(k): v for k, v in json.load(f).items()}
+        print(f"命中缓存：{len(swaps)} 个区块的 Swap 事件（未重复查询 BigQuery）")
+    else:
+        # 分批查询：一次拉 8000+ 区块的全部 Swap 日志结果集过大，易 SSL 中断；
+        # 分批同时降低单次负载并让失败只影响一批（分区裁剪相同，总扫描字节不变）
+        blist = sorted(blocks)
+        batch = 2000
+        swaps = {}
+        for i in range(0, len(blist), batch):
+            part = blist[i:i + batch]
+            got = bq.block_swaps(part, sorted(dates))
+            swaps.update(got)
+            print(f"  批次 {i//batch+1}/{(len(blist)+batch-1)//batch}: "
+                  f"+{len(got)} 区块（累计 {len(swaps)}）", flush=True)
+        cache_p.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(cache_p, "wt", encoding="utf-8") as f:
+            json.dump({str(k): v for k, v in swaps.items()}, f)
+        print(f"取到 {len(swaps)} 个区块的 Swap 事件（已缓存）")
     for name, cs in loaded.items():
         n = 0
         full = Counter()

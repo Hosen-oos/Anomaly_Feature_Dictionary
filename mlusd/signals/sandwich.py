@@ -32,23 +32,29 @@ def _to_int256(u: int) -> int:
 
 
 def parse_swap(log: dict):
-    """→ (pool, direction, size) 或 None。direction ∈ {+1,-1}，size 为该方向的入池量。"""
+    """→ (pool, direction, amount_in, amount_out) 或 None。
+
+    direction ∈ {+1,-1} 表示 token0 入池 / token1 入池。同时返回**入池量与出池量**——
+    文献的金额链接条件是"TA2 输入 ≈ TA1 输出"（两者是同一种代币的两条腿），
+    只比入池量会永远对不上（此前 full_pattern 恒为 0 的原因）。
+    """
     t0 = (log.get("topics") or [None])[0]
     data = log.get("data", "0x")
     pool = (log.get("pool") or "").lower()
     if t0 == UNIV2:
         a0in, a1in = _word(data, 0), _word(data, 1)
+        a0out, a1out = _word(data, 2), _word(data, 3)
         if a0in > 0:
-            return pool, +1, a0in
+            return pool, +1, a0in, a1out      # 投入 token0，取出 token1
         if a1in > 0:
-            return pool, -1, a1in
+            return pool, -1, a1in, a0out      # 投入 token1，取出 token0
         return None
     if t0 == UNIV3:
-        a0 = _to_int256(_word(data, 0))
+        a0, a1 = _to_int256(_word(data, 0)), _to_int256(_word(data, 1))
         if a0 > 0:
-            return pool, +1, a0
+            return pool, +1, a0, max(0, -a1)
         if a0 < 0:
-            return pool, -1, -a0
+            return pool, -1, max(0, a1), -a0
         return None
     return None
 
@@ -71,24 +77,21 @@ def sandwich_signals(ctx, block_logs: list[dict]) -> dict:
     if not mine:
         return {"sw_in_swap_block": 1.0}
 
-    my_pools = {(pool, d): sz for _, _, pool, d, sz in mine}
     others = [x for x in parsed if x[0] != my_hash]
-
     opposite_same_pool = 0     # 同池反向的他方 swap 数
-    amount_linked = 0.0        # 金额链接程度（TA2 输入 ≈ TA1 输出）
-    victim_between = 0         # 本交易与配对交易之间是否夹着他方 swap
+    amount_linked = 0.0        # 金额链接（TA2 输入 ≈ TA1 输出，同一代币的两条腿）
+    victim_between = 0         # 本交易与配对交易之间是否夹着第三方 swap（受害者）
     my_idx = min(li for _, li, *_ in mine)
 
-    for (pool, d), sz in my_pools.items():
-        for oh, oli, opool, od, osz in others:
+    for _, _, pool, d, a_in, a_out in mine:
+        for oh, oli, opool, od, o_in, o_out in others:
             if opool != pool or od == d:
                 continue
             opposite_same_pool += 1
-            # 金额链接：两者量级接近（比值落在 [0.5, 2] 视为链接）
-            if sz > 0 and osz > 0:
-                ratio = min(sz, osz) / max(sz, osz)
-                amount_linked = max(amount_linked, ratio)
-            # 夹击结构：本交易与配对交易之间存在第三方 swap（受害者）
+            # 两种配对次序都验：我方为 TA1（我的 out ≈ 对方 in）或我方为 TA2（对方 out ≈ 我的 in）
+            for x, y in ((a_out, o_in), (o_out, a_in)):
+                if x > 0 and y > 0:
+                    amount_linked = max(amount_linked, min(x, y) / max(x, y))
             lo, hi = min(my_idx, oli), max(my_idx, oli)
             if any(lo < li < hi and h not in (my_hash, oh)
                    for h, li, *_ in parsed):
