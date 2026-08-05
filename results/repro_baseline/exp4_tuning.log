@@ -1,0 +1,22 @@
+D_cal fit 9000 / val 2000 / test 2000
+D_known train 55 / test 56
+
+[BEFORE 先验权重+τ0.55] KNOWN 分类 (attack-test)  正常误判KNOWN 0/2000
+  flash_loan           正确KNOWN 0/10 召回0.00 误分其他类3  τ=0.550
+  phishing             正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.550
+  ponzi                正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.550
+  price_manipulation   正确KNOWN 0/6 召回0.00 误分其他类2  τ=0.550
+  rug_pull             正确KNOWN 0/10 召回0.00 误分其他类1  τ=0.550
+  sandwich             正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.550
+  宏平均 KNOWN 召回: 0.000
+
+标定阈值(控正常误报≤0.5%/类): {'flash_loan': 0.328, 'phishing': 0.333, 'ponzi': 0.31, 'price_manipulation': 0.32, 'rug_pull': 0.256, 'sandwich': 0.388}
+
+[AFTER 数据驱动权重+F1标定阈值] KNOWN 分类 (attack-test)  正常误判KNOWN 16/2000
+  flash_loan           正确KNOWN 2/10 召回0.20 误分其他类7  τ=0.328
+  phishing             正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.333
+  ponzi                正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.310
+  price_manipulation   正确KNOWN 0/6 召回0.00 误分其他类6  τ=0.320
+  rug_pull             正确KNOWN 0/10 召回0.00 误分其他类5  τ=0.256
+  sandwich             正确KNOWN 0/10 召回0.00 误分其他类0  τ=0.388
+  宏平均 KNOWN 召回: 0.033

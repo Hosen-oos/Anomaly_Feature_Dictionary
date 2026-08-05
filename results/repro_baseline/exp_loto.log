@@ -1,0 +1,8 @@
+=== LOTO：逐类型移出字典，其攻击应判 UNKNOWN 而非误塞已知类 ===
+留出类型                   检测AUROC  UNKNOWN     误判已知   漏检NORMAL
+flash_loan               0.993        0       17          3
+phishing                 0.626        2        0         18
+ponzi                    0.547        0        0         20
+price_manipulation       0.993        0       11          0
+rug_pull                 0.933        1        8         11
+sandwich                 0.746        0        0         20

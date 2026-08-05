@@ -1,0 +1,24 @@
+=== 利润归因特征均值 ===
+特征                      flash_loan  price_mani    rug_pull    phishing       ponzi    sandwich        (正常)
+passthrough_max               1.00        1.00        0.63        0.00        0.00        0.38        0.05
+drain_imbalance               0.62        0.64        0.87        1.00        0.00        0.80        0.99
+profit_concentration          0.76        0.65        0.84        0.98        0.00        0.99        0.99
+loss_concentration            0.80        0.73        0.87        1.00        0.00        0.99        0.99
+sender_is_winner              0.32        0.00        0.16        0.08        0.00        0.50        0.17
+n_tokens_norm                 0.48        0.60        0.33        0.12        0.00        0.20        0.15
+sender_roundtrip              0.05        0.09        0.05        0.00        0.00        0.00        0.00
+victim_is_pool                0.33        0.17        0.69        0.00        0.00        0.50        0.39
+winner_is_pool                0.22        0.33        0.31        0.00        0.00        0.50        0.59
+pool_loss_share               0.38        0.16        0.69        0.00        0.00        0.51        0.40
+
+=== flash_loan vs price_manipulation 可分性（差值绝对值排序）===
+  sender_is_winner         |Δ|=0.316   flash=0.32  price=0.00
+  pool_loss_share          |Δ|=0.213   flash=0.38  price=0.16
+  victim_is_pool           |Δ|=0.167   flash=0.33  price=0.17
+  n_tokens_norm            |Δ|=0.121   flash=0.48  price=0.60
+  profit_concentration     |Δ|=0.115   flash=0.76  price=0.65
+  winner_is_pool           |Δ|=0.111   flash=0.22  price=0.33
+  loss_concentration       |Δ|=0.062   flash=0.80  price=0.73
+  sender_roundtrip         |Δ|=0.038   flash=0.05  price=0.09
+  drain_imbalance          |Δ|=0.020   flash=0.62  price=0.64
+  passthrough_max          |Δ|=0.000   flash=1.00  price=1.00
