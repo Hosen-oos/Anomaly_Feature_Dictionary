@@ -115,8 +115,8 @@ python -m experiments.exp_refresh_all      # 实验二/三：开放集 AUROC + �
 python -m experiments.exp_baselines        # 基线对比（经典 + 深度 + 监督）
 python -m experiments.exp_dopen            # 开放集真未知测试
 python -m experiments.exp_loto             # LOTO 逐类型留出协议
-python -m experiments.exp4_tuning          # 权重更新 + 阈值标定
-python -m experiments.exp_contrastive_sweep  # per-param 对比式字典 + λ 扫描 + 标注歧义检验
+python -m experiments.exp4_tuning          # 【已被取代】旧的聚合格值+阈值标定路线，KNOWN 召回 0.033
+python -m experiments.exp_contrastive_sweep  # per-param 对比式字典 + λ 扫描 + 标注歧义检验（取代 exp4_tuning，现行结论 62%）
 python -m experiments.exp_profit_check     # 利润归因特征判别力
 python -m experiments.exp_decode_coverage  # 事件解码覆盖率
 ```
