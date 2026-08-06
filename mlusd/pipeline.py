@@ -2,8 +2,13 @@
 
 用法：
     det = Detector(extractors, dictionaries, alpha=0.01)
-    det.fit(normal_contexts)          # 只喂正常交易
-    report = det.detect(ctx)          # -> DetectionReport
+    det.fit(normal_contexts)                          # 只喂正常交易（无监督部分）
+    det.fit_types(attacks_by_type, normal_contexts)   # 可选：参数级字典 + 阈值标定
+    report = det.detect(ctx)                          # -> DetectionReport
+
+fit() 完成后 detect() 即可工作，此时 M4 走位级字典。fit_types() 另需带类型标签的攻击
+样本，它构建参数级对比权重并把各类 τ_k 重标定到正常匹配分的 (1-alpha_fp) 分位数；此后
+M4 改走参数级分 score_k。两条路径的覆盖率缩放、判定优先级与贡献度分解完全一致。
 """
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ import numpy as np
 from mlusd.calibrate.ecdf import ECDFCalibrator
 from mlusd.decide.decision import decide
 from mlusd.match.dictionary import AttackDictionary
-from mlusd.match.matcher import match_all
+from mlusd.match.matcher import match_all, match_one
 from mlusd.openset.fisher import OpenSetCalibrator
 from mlusd.signals.base import SignalExtractor
 from mlusd.types import DetectionReport, TxContext, empty_signal_matrix
@@ -29,10 +34,21 @@ class Detector:
                  openset_aggregator: str = "learned",
                  two_sided: bool = False,
                  dual_tail: bool = False,
-                 dual_repr: bool = True):
+                 dual_repr: bool = True,
+                 param_dict: bool = True,
+                 param_dict_lam: float = 1.0,
+                 param_dict_n0: float = 10.0,
+                 alpha_fp: float = 0.005):
         # dual_repr：开放集检测采用**双路表示**（8 维格值 + 参数向量，取全局分位数 max）。
         # 实测整体 0.837→0.877、sandwich 0.779→0.929，phishing 基本持平。见 learned.py::fit。
         self.dual_repr = dual_repr
+        # param_dict：M4 使用参数级对比字典（需 fit_types 提供带标签攻击样本）。
+        # 位级 max 聚合会抹平机理相近类型间的差异，参数级对比权重恢复该判别力。
+        self.param_dict = param_dict
+        self.param_dict_lam = param_dict_lam
+        self.param_dict_n0 = param_dict_n0
+        self.alpha_fp = alpha_fp
+        self._profiles: dict = {}
         self._param_names: list[str] = []
         seen = set()
         for e in extractors:
@@ -115,11 +131,56 @@ class Detector:
         self._fitted = True
         return self
 
+    def fit_types(self, attacks_by_type: dict[str, list[TxContext]],
+                  normal_contexts: list[TxContext] | None = None,
+                  alpha_fp: float | None = None) -> dict[str, float]:
+        """构建参数级对比字典，并逐类型把 τ_k 标定到正常匹配分的 (1-alpha_fp) 分位数。
+
+        阈值必须重标定：score_k 与位级 base_k 量纲不同，YAML 中的先验 τ_k 不可直接沿用。
+        标定按逐类误报率而非 F1 最优——类型判定是跨类型 argmax，多个低阈值叠加会把大量
+        正常交易误判为某个已知类型（见 weight_update.tune_thresholds）。
+
+        返回 {攻击类型: 标定后的 τ_k}；param_dict=False 时为空操作。
+        """
+        assert self._fitted, "先调用 fit(normal_contexts)"
+        if not self.param_dict:
+            return {}
+        from mlusd.match.contrastive import build_profiles
+        known = {d.attack_type for d in self.dictionaries}
+        profs = build_profiles(self, attacks_by_type, n0=self.param_dict_n0)
+        self._profiles = {t: p for t, p in profs.items() if t in known}
+        if not normal_contexts:
+            return {d.attack_type: d.match_threshold for d in self.dictionaries}
+
+        rows = []
+        for c in normal_contexts:
+            S, m = self._raw_matrix(c)
+            _, T, _ = self.calibrator.transform(S, m)
+            rows.append((T, m, self._type_scores(c)))
+        a = self.alpha_fp if alpha_fp is None else alpha_fp
+        tuned = {}
+        for d in self.dictionaries:
+            neg = [match_one(d, T, m, None if sc is None else sc.get(d.attack_type)).final_score
+                   for T, m, sc in rows]
+            if neg:
+                d.match_threshold = max(float(np.quantile(neg, 1.0 - a)), 0.05)
+            tuned[d.attack_type] = d.match_threshold
+        return tuned
+
+    def _type_scores(self, ctx: TxContext) -> dict[str, float] | None:
+        """参数级对比分 {类型: score_k}；未构建档案时返回 None（M4 退回位级）。"""
+        if not self._profiles:
+            return None
+        from mlusd.match.contrastive import contrastive_score
+        qs = self._param_quantiles(ctx)
+        return {t: contrastive_score(p, qs, self.param_dict_lam)[0]
+                for t, p in self._profiles.items()}
+
     def detect(self, ctx: TxContext) -> DetectionReport:
         assert self._fitted, "先调用 fit(normal_contexts)"
         S, mask = self._raw_matrix(ctx)
         Q, T, group = self.calibrator.transform(S, mask)
-        matches = match_all(self.dictionaries, T, mask)
+        matches = match_all(self.dictionaries, T, mask, self._type_scores(ctx))
         pv = self._param_vec(ctx) if self._param_names else None
         ubar = (self.openset.ubar(Q, mask, group, pv)
                 if self._param_names else self.openset.ubar(Q, mask, group))
@@ -177,6 +238,10 @@ class DualPathDetector:
         self._ref = {"single": np.sort([self._raw(self.single, c) for c in ref]),
                      "folded": np.sort([self._raw(self.folded, c) for c in ref])}
         return self
+
+    def fit_types(self, attacks_by_type, normal_contexts=None, alpha_fp=None):
+        """类型匹配只走单侧路径（见类文档），故参数级字典也只在该路径上构建。"""
+        return self.single.fit_types(attacks_by_type, normal_contexts, alpha_fp)
 
     def detect_score(self, ctx) -> float:
         """并联异常分 ∈ [0,1]：两路全局分位数取 max。"""

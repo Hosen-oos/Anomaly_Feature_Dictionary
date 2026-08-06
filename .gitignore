@@ -24,3 +24,6 @@ __pycache__/
 *.rar
 *.zip
 *.7z
+
+# git filter-branch 中断残留（本地保留，不入库）
+.git-rewrite/
