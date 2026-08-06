@@ -45,7 +45,8 @@ class OpenSetCalibrator:
 
     def fit(self, Qs: list[np.ndarray],
             masks: list[tuple[int, int, int, int]],
-            resolver: GroupResolver) -> None:
+            resolver: GroupResolver, param_vecs=None) -> None:
+        """param_vecs 仅为与 LearnedOpenSetCalibrator 接口一致而接受，Fisher 路不使用。"""
         buckets: dict[str, list[float]] = {}
         for Q, m in zip(Qs, masks):
             g = resolver.resolve(m)
@@ -53,7 +54,7 @@ class OpenSetCalibrator:
         self._sorted_u = {g: np.sort(np.asarray(v)) for g, v in buckets.items()}
 
     def ubar(self, Q: np.ndarray, mask: tuple[int, int, int, int],
-             group: str) -> float:
+             group: str, param_vec=None) -> float:
         """Ū：同组正常交易中整体异常程度不超过当前交易的比例。"""
         ref = self._sorted_u.get(group)
         if ref is None or len(ref) == 0:

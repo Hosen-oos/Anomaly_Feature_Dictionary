@@ -29,7 +29,9 @@ class LearnedOpenSetCalibrator:
         # 动机（实测）：全局双侧折叠会稀释"大即异常"的经济类（flash/price 掉 0.14–0.15），
         # 单侧又漏掉"小即异常"的类型（ponzi/地址投毒）。两尾并列则无需先验二选一。
         self.dual_tail = dual_tail
-        self._model = None
+        self._model = None          # 格值路
+        self._model_p = None        # 参数路（双路表示时启用）
+        self._ref = self._ref_p = None
         self._sorted: dict[str, np.ndarray] = {}
 
     def _vec(self, Q: np.ndarray, mask) -> np.ndarray:
@@ -49,31 +51,61 @@ class LearnedOpenSetCalibrator:
             out.append(-np.log(max(q, eps)))               # 下尾：q→0 增大
         return np.asarray(out, dtype=float)
 
-    def fit(self, Qs, masks, resolver: GroupResolver) -> None:
+    def fit(self, Qs, masks, resolver: GroupResolver, param_vecs=None) -> None:
+        """param_vecs 非空时启用**双路表示**：8 维格值路 + 参数路，各自建模后取
+        全局分位数的 max（"任一视角认为极端即异常"）。
+
+        动机（实测）：格内 max 聚合等价于隐式特征选择——对信号**集中**的类型有益
+        （phishing 在 L2-j3 单格），对信号**关系型/分散**的类型有害（sandwich 的
+        同池反向等证据散落多参数，被更极端的参数掩盖）。两路取 max 使两者兼得：
+        sandwich 0.779→0.929、整体 0.837→0.877，而 phishing 基本持平。
+        与格内参数池的非稀释 max 是同一母题，只是上升一个层次。
+        """
         from sklearn.ensemble import IsolationForest
         X = np.vstack([self._vec(Q, m) for Q, m in zip(Qs, masks)])
         self._model = IsolationForest(n_estimators=self.n_estimators,
                                       random_state=self.seed).fit(X)
         raw = -self._model.score_samples(X)      # 越大越异常
+
+        self._model_p = None
+        if param_vecs is not None and len(param_vecs):
+            Xp = np.asarray(param_vecs, dtype=float)
+            self._model_p = IsolationForest(n_estimators=self.n_estimators,
+                                            random_state=self.seed).fit(Xp)
+            rawp = -self._model_p.score_samples(Xp)
+            # 全局分位参考（使两路分数同尺度可比）
+            self._ref = np.sort(raw)
+            self._ref_p = np.sort(rawp)
+            raw = np.maximum(self._pct(self._ref, raw), self._pct(self._ref_p, rawp))
+
         buckets: dict[str, list[float]] = defaultdict(list)
         for r, m in zip(raw, masks):
             buckets[resolver.resolve(m)].append(float(r))
         self._sorted = {g: np.sort(np.asarray(v)) for g, v in buckets.items()}
 
-    def raw_score(self, Q: np.ndarray, mask) -> float:
+    @staticmethod
+    def _pct(ref: np.ndarray, v):
+        return np.searchsorted(ref, v, side="left") / (len(ref) + 1)
+
+    def raw_score(self, Q: np.ndarray, mask, param_vec=None) -> float:
         """全局原始异常分（越大越异常），用于排序/AUROC。组内再校准会压掉全局排序，
         故检测质量应以此为准；组内 FP 控制走 ubar（组内分位阈值），二者决策一致。"""
         if self._model is None:
             return 0.0
-        return float(-self._model.score_samples(self._vec(Q, mask).reshape(1, -1))[0])
+        s = float(-self._model.score_samples(self._vec(Q, mask).reshape(1, -1))[0])
+        if self._model_p is None or param_vec is None:
+            return s
+        sp = float(-self._model_p.score_samples(
+            np.asarray(param_vec, dtype=float).reshape(1, -1))[0])
+        return float(max(self._pct(self._ref, s), self._pct(self._ref_p, sp)))
 
-    def ubar(self, Q: np.ndarray, mask, group: str) -> float:
+    def ubar(self, Q: np.ndarray, mask, group: str, param_vec=None) -> float:
         """组内分位数（决策变量）：ubar≥1−α ⟺ 原始分≥该组 (1−α) 分位阈值，
         实现各组 FP≈α 的控制（side="left" 保守）。"""
         ref = self._sorted.get(group)
         if ref is None or len(ref) == 0 or self._model is None:
             return 0.0
-        r = self.raw_score(Q, mask)
+        r = self.raw_score(Q, mask, param_vec)
         return float(np.searchsorted(ref, r, side="left") / (len(ref) + 1))
 
     @property

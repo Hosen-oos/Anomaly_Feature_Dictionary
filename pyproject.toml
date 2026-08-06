@@ -15,5 +15,8 @@ chain = ["web3>=6.0"]
 learn = ["torch>=2.0", "torch-geometric>=2.4"]
 dev = ["pytest>=7.0"]
 
+[tool.setuptools.packages.find]
+include = ["mlusd*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

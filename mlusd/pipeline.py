@@ -28,7 +28,12 @@ class Detector:
                  openset_mode: str = "fisher",
                  openset_aggregator: str = "learned",
                  two_sided: bool = False,
-                 dual_tail: bool = False):
+                 dual_tail: bool = False,
+                 dual_repr: bool = True):
+        # dual_repr：开放集检测采用**双路表示**（8 维格值 + 参数向量，取全局分位数 max）。
+        # 实测整体 0.837→0.877、sandwich 0.779→0.929，phishing 基本持平。见 learned.py::fit。
+        self.dual_repr = dual_repr
+        self._param_names: list[str] = []
         seen = set()
         for e in extractors:
             key = (e.layer, e.angle)
@@ -64,6 +69,28 @@ class Detector:
                 S[e.layer - 1, e.angle - 1] = float(v)
         return S, mask
 
+    def _param_quantiles(self, ctx: TxContext) -> dict[str, float]:
+        """各 DictSignal 格内参数的校准分位数（掩码感知：层不可用则不产出）。"""
+        from mlusd.signals.pool import DictSignal
+        out: dict[str, float] = {}
+        mask = ctx.availability
+        for e in self.extractors:
+            if not isinstance(e, DictSignal) or not mask[e.layer - 1]:
+                continue
+            for k, q in e.param_quantiles(ctx).items():
+                out[f"L{e.layer}j{e.angle}.{k}"] = q
+        return out
+
+    def _param_vec(self, ctx: TxContext) -> np.ndarray:
+        """定长参数向量（缺失填中性 0.5）+ 可用性掩码，供双路表示的参数路使用。"""
+        qs = self._param_quantiles(ctx)
+        v = np.full(len(self._param_names) + 4, 0.5)
+        for i, k in enumerate(self._param_names):
+            if k in qs:
+                v[i] = qs[k]
+        v[len(self._param_names):] = ctx.availability
+        return v
+
     # ------------------------------------------------------------- API
 
     def fit(self, normal_contexts: list[TxContext]) -> "Detector":
@@ -77,7 +104,14 @@ class Detector:
             masks.append(m)
         self.calibrator.fit(mats, masks)
         Qs = [self.calibrator.transform(S, m)[0] for S, m in zip(mats, masks)]
-        self.openset.fit(Qs, masks, self.calibrator.resolver)
+
+        param_vecs = None
+        if self.dual_repr and hasattr(self.openset, "_model_p"):
+            pqs = [self._param_quantiles(c) for c in normal_contexts]
+            self._param_names = sorted({k for d in pqs for k in d})
+            if self._param_names:
+                param_vecs = [self._param_vec(c) for c in normal_contexts]
+        self.openset.fit(Qs, masks, self.calibrator.resolver, param_vecs=param_vecs)
         self._fitted = True
         return self
 
@@ -86,7 +120,9 @@ class Detector:
         S, mask = self._raw_matrix(ctx)
         Q, T, group = self.calibrator.transform(S, mask)
         matches = match_all(self.dictionaries, T, mask)
-        ubar = self.openset.ubar(Q, mask, group)
+        pv = self._param_vec(ctx) if self._param_names else None
+        ubar = (self.openset.ubar(Q, mask, group, pv)
+                if self._param_names else self.openset.ubar(Q, mask, group))
         report = decide(
             tx_hash=ctx.tx_hash, matches=matches, Q=Q, mask=mask, group=group,
             ubar=ubar, tau_u=self.openset.threshold,

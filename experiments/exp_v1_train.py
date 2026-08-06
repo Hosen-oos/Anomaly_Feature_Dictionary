@@ -32,8 +32,12 @@ from mlusd.pipeline import Detector                               # noqa: E402
 from mlusd.signals.factory import default_extractors              # noqa: E402
 
 
-def build_v1(epochs: int, device: str):
-    """v1 提取器组：三个学习格 + 五个 v0 规则格。"""
+def build_v1(epochs: int, device: str, block_size: int = 48, d_model: int = 64,
+             n_layer: int = 2, max_graphs: int = 800):
+    """v1 提取器组：三个学习格 + 五个 v0 规则格。
+
+    后四个参数为容量消融旋钮，默认值与各模型自身默认一致（48/64/2/800）。
+    """
     from mlusd.signals.l1_graph import FundFlowScore
     from mlusd.signals.l1_graph_v1 import GraphAutoencoder
     from mlusd.signals.l2_semantic import ApprovalMismatchScore, EconomicAnomalyScore
@@ -43,12 +47,16 @@ def build_v1(epochs: int, device: str):
     from mlusd.signals.l4_offchain import OffchainConsistencyScore
     from mlusd.signals.pool import DictSignal
     return [
-        GraphAutoencoder(epochs=max(3, epochs // 3), device=device),   # L1-j1 (v1)
+        GraphAutoencoder(epochs=max(3, epochs // 3), device=device,
+                         max_graphs=max_graphs),                       # L1-j1 (v1)
         DictSignal(FundFlowScore()),                                   # L1-j2
-        ActionSequenceTransformer(epochs=epochs, device=device),       # L2-j1 (v1)
+        ActionSequenceTransformer(epochs=epochs, device=device,
+                                  block_size=block_size, d_model=d_model,
+                                  n_layer=n_layer),                    # L2-j1 (v1)
         DictSignal(EconomicAnomalyScore()),                            # L2-j2
         DictSignal(ApprovalMismatchScore()),                           # L2-j3
-        TraceTransformer(epochs=epochs, device=device),                # L3-j1 (v1)
+        TraceTransformer(epochs=epochs, device=device, block_size=block_size,
+                         d_model=d_model, n_layer=n_layer),            # L3-j1 (v1)
         DictSignal(TracePropertyScore()),                              # L3-j3
         OffchainConsistencyScore(),                                    # L4-j3
     ]
@@ -87,6 +95,11 @@ def main():
     ap.add_argument("--fit-n", type=int, default=8000, help="用于 fit 的正常样本数")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--skip-v0", action="store_true")
+    ap.add_argument("--block-size", type=int, default=48, help="序列模型上下文长度")
+    ap.add_argument("--d-model", type=int, default=64, help="序列模型隐层宽度")
+    ap.add_argument("--n-layer", type=int, default=2, help="序列模型层数")
+    ap.add_argument("--max-graphs", type=int, default=800, help="图自编码器训练图数上限")
+    ap.add_argument("--tag", default="", help="日志标记，便于区分扫描中的各配置")
     args = ap.parse_args()
 
     try:
@@ -119,7 +132,12 @@ def main():
         results["v0"] = evaluate(det0, dknown, dopen, test_norm, by, "v0 规则版")
 
     t0 = time.time()
-    det1 = Detector(build_v1(args.epochs, args.device), dicts, alpha=0.01,
+    print(f"\nv1 配置{(' [' + args.tag + ']') if args.tag else ''}: "
+          f"block_size={args.block_size} d_model={args.d_model} "
+          f"n_layer={args.n_layer} max_graphs={args.max_graphs} epochs={args.epochs}")
+    det1 = Detector(build_v1(args.epochs, args.device, args.block_size, args.d_model,
+                             args.n_layer, args.max_graphs),
+                    dicts, alpha=0.01,
                     min_group_size=150, openset_aggregator="learned").fit(fit_norm)
     print(f"\nv1 训练+拟合耗时 {time.time()-t0:.0f}s")
     results["v1"] = evaluate(det1, dknown, dopen, test_norm, by, "v1 学习版")

@@ -1,0 +1,16 @@
+torch 2.11.0+cu128 | CUDA 可用: True | NVIDIA GeForce RTX 4060 Laptop GPU
+fit 12000 正常 | test 2000 正常 | 111 攻击 | 22 真未知
+
+v1 配置 [bs96-r3]: block_size=96 d_model=64 n_layer=2 max_graphs=800 epochs=20
+
+v1 训练+拟合耗时 219s
+
+[v1 学习版]
+  整体                   AUROC = 0.802
+  flash_loan           AUROC = 0.986
+  phishing             AUROC = 0.652
+  ponzi                AUROC = 0.553
+  price_manipulation   AUROC = 0.994
+  rug_pull             AUROC = 0.957
+  sandwich             AUROC = 0.754
+  D_open真未知            AUROC = 0.933

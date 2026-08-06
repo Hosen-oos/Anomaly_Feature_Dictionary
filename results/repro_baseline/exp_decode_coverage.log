@@ -1,0 +1,19 @@
+=== 动作出现率（%）——扩充解码后 ===
+类型                    flashloan     borrow      repay       swap  remove_li  add_liqui   withdraw    approve
+flash_loan                   75         15         20         55          5         25         55         90
+phishing                      0          0          0          0          0          0          0         45
+ponzi                         0          0          0          0          0          0          0          0
+price_manipulation           55         18          9         91          9         36         55         91
+rug_pull                     20          0          0         65          0          0         40         55
+sandwich                      0          0          0        100          0          0          5          0
+
+=== 事件解码覆盖率 ===
+  flash_loan           2390/4615 = 52%
+  phishing             45/62 = 73%
+  ponzi                1/2 = 50%
+  price_manipulation   2373/3747 = 63%
+  rug_pull             1902/2098 = 91%
+  sandwich             116/121 = 96%
+  总计                   6827/10645 = 64%
+
+仍未识别的 top-8 topic0: [('804c9b84', 378), ('6eabe333', 208), ('f1d3997f', 185), ('4dec04e7', 152), ('458f5fa4', 141), ('04e4f521', 141), ('b718f0b1', 141), ('2b627736', 135)]

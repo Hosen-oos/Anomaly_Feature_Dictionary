@@ -1,0 +1,21 @@
+提特征...
+
+=== 无监督异常检测 AUROC（攻击 vs 正常，均只在正常上训练）===
+  IsolationForest(扁平)          AUROC = 0.780
+  OneClassSVM(扁平)              AUROC = 0.700
+  LOF(扁平)                      AUROC = 0.773
+  原始8信号+IForest(无校准)           AUROC = 0.734
+  ★本框架(Ū 多层分组校准)               AUROC = 0.794
+
+=== 分类型 AUROC（本框架 vs 最强扁平基线 IForest）===
+  类型                       本框架  IForest
+  flash_loan             0.994    0.994
+  phishing               0.628    0.446
+  ponzi                  0.549    0.482
+  price_manipulation     0.994    0.999
+  rug_pull               0.935    0.969
+  sandwich               0.754    0.887
+
+=== 监督分类 AUROC（用攻击标签，train/test 6/4，参考上界）===
+  RandomForest                 AUROC = 0.715
+  HistGradientBoosting         AUROC = 0.843
